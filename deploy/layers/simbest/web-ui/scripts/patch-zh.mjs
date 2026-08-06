@@ -82,8 +82,9 @@ for (const name of readdirSync(assetsDir)) {
     const oldStem = name.replace(/\.js$/, "");
     const newName = oldStem + suffix;
     renameSync(join(assetsDir, name), join(assetsDir, newName));
+    // 只注册带 .js 的精确映射；裸 stem 会命中其它 chunk 引用里的前缀子串，
+    // 导致 split/join 全局替换时后缀被叠加成 *.zh-<hash>.zh-<hash>.js（双后缀）。
     renames.set(oldStem + ".js", newName);
-    renames.set(oldStem, oldStem + suffix.slice(0, -3));
   }
 }
 
