@@ -1,0 +1,88 @@
+{
+  // The deployment contract major this directory conforms to.
+  "contract": 1,
+
+  // Short identifier for your organization; app and container names derive from it.
+  "orgId": "simbest",
+
+  // The one public address of the deployment; the service URLs derive from it.
+  "publicUrl": "http://localhost:8082",
+
+  // Where to deploy: "docker" runs local containers, "fly" deploys Fly apps,
+  // and "aws" runs the control plane on ECS and agent computers on Lambda MicroVMs.
+  "target": "docker",
+
+  // First-party services to run. The full set: "core" (the agent runtime and API,
+  // always required), "slack" (the Slack surface, runs inside the core process),
+  // "web-ui" (a browser chat UI), "admin" (the operator dashboard), "portal"
+  // (the public sign-in front door), and "auth" (the built-in sign-in broker that
+  // emails one-time links; drop it to sign in through an external OIDC provider).
+  "services": ["core", "web-ui", "admin"],
+
+  "imageOverrides": {
+    "core": "simbest-core-local:0.1.6",
+    "web-ui": "simbest-web-ui-local:0.1.5",
+    "admin": "simbest-admin-local:0.1.0",
+  },
+
+  // Extra plugins to run alongside the services. A prebuilt image runs with
+  // { "name": "linear", "image": "ghcr.io/you/qm-linear:1.0" }. A plugin with a
+  // Dockerfile at plugins/<name>/ in this directory needs no entry here at all.
+  "plugins": [
+    {
+      "name": "glm-responses",
+      "env": {
+        "UPSTREAM_BASE_URL": "https://open.bigmodel.cn/api/coding/paas/v4",
+        "UPSTREAM_MODEL": "glm-5.2",
+        "UPSTREAM_TIMEOUT_MS": "240000",
+      },
+      "secrets": [
+        {
+          "name": "OPENAI_API_KEY",
+          "description": "API key used by the GLM compatibility gateway.",
+          "required": true,
+        },
+      ],
+    },
+  ],
+
+  // Extra directories of SKILL.md files, mounted into the agent.
+  "skills": [],
+
+  "env": {
+    "core": {
+      "NODE_ENV": "test",
+      "HARNESS": "pi",
+      "PI_MODEL": "gpt-5.6-sol",
+      "OPENAI_BASE_URL": "http://glm-responses:8080/v1",
+      "SANDBOX_BACKEND": "local",
+      "LOCAL_SANDBOX_HOST": "host.docker.internal",
+      "LOCAL_SANDBOX_IMAGE": "simbest-sandbox:mvp-0.1.8",
+      "TURN_WALL_CLOCK_SEC": "300",
+    },
+    "web-ui": {
+      "NODE_ENV": "test",
+      "ALLOW_UNSIGNED_TEST_IDENTITY": "1",
+      "WEB_UI_PRINCIPALS": "admin,zhangsan",
+    },
+    "admin": {
+      "NODE_ENV": "test",
+      "ALLOW_UNSIGNED_TEST_IDENTITY": "1",
+    },
+  },
+
+  "secretEnv": {
+    "core": {
+      "ADMIN_GRANTS": "ADMIN_GRANTS",
+      "OPENAI_API_KEY": "OPENAI_API_KEY",
+    },
+  },
+
+  // The Fly app agents execute in. The core boots the immutable sandbox image
+  // recorded by `qm sandbox publish`.
+  "sandbox": {
+    "app": "simbest-sandboxes",
+    "image": "simbest-sandbox@sha256:399f4e9e2d18d55a6ad5fec91a7296845464d7768ccaa659145cbb1e8f06a7a6",
+    "baseImage": "ghcr.io/yc-software/qm/sandbox-base@sha256:52cb44a6e9d166da20638c8ce55e3f423384f5557eba49915684cb8ed16e5873",
+  },
+}

@@ -1,0 +1,558 @@
+#!/usr/bin/env node
+
+const CHANNELS = {
+  hot: {
+    id: "hot",
+    label: "热点",
+    priority: 100,
+    sourceUrl: "https://www.toutiao.com/ch/news_hot/",
+  },
+  world: {
+    id: "world",
+    label: "国际",
+    priority: 75,
+    sourceUrl: "https://www.toutiao.com/ch/news_world/",
+  },
+  finance: {
+    id: "finance",
+    label: "财经",
+    priority: 70,
+    sourceUrl: "https://www.toutiao.com/ch/news_finance/",
+  },
+  tech: {
+    id: "tech",
+    label: "科技",
+    priority: 65,
+    sourceUrl: "https://www.toutiao.com/ch/news_tech/",
+  },
+  entertainment: {
+    id: "entertainment",
+    label: "娱乐",
+    priority: 45,
+    sourceUrl: "https://www.toutiao.com/ch/news_entertainment/",
+  },
+};
+
+const TOP_CHANNELS = ["hot", "world", "finance", "tech"];
+const SEARCH_CHANNELS = ["hot", "world", "finance", "tech", "entertainment"];
+const CHANNEL_ALIASES = {
+  hot: "hot",
+  热点: "hot",
+  热门: "hot",
+  world: "world",
+  国际: "world",
+  finance: "finance",
+  财经: "finance",
+  tech: "tech",
+  科技: "tech",
+  entertainment: "entertainment",
+  娱乐: "entertainment",
+};
+const READER_BASE = "https://r.jina.ai/";
+
+function cleanText(value) {
+  return value
+    .replace(/!\[[^\]]*\]\([^\)]*\)/g, "")
+    .replace(/\[([^\]]+)\]\([^\)]*\)/g, "$1")
+    .replace(/[*_`#]/g, "")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function normalizeChannel(value) {
+  return (
+    CHANNEL_ALIASES[
+      String(value ?? "")
+        .trim()
+        .toLowerCase()
+    ] ?? null
+  );
+}
+
+function topicToSelection(topic) {
+  const value = topic.trim();
+  if (/娱乐|八卦|明星|影视|电影|综艺/.test(value)) {
+    return { topic: value, category: value, ...CHANNELS.entertainment };
+  }
+  if (/财经|金融|股市|经济|商业/.test(value)) {
+    return { topic: value, category: value, ...CHANNELS.finance };
+  }
+  if (/科技|人工智能|AI|芯片|互联网/i.test(value)) {
+    return { topic: value, category: value, ...CHANNELS.tech };
+  }
+  if (/地缘|国际|外交|战争|中东|俄乌/.test(value)) {
+    return { topic: value, category: value, ...CHANNELS.world };
+  }
+  if (/热点|热门|重要新闻|今日大事/.test(value)) {
+    return { topic: value, category: value, ...CHANNELS.hot };
+  }
+  return null;
+}
+
+function channelIdFromUrl(sourceUrl) {
+  return Object.values(CHANNELS).find((channel) => channel.sourceUrl === sourceUrl)?.id ?? null;
+}
+
+function parseChannelPage(markdown, category, sourceUrl, channelId = channelIdFromUrl(sourceUrl)) {
+  const text = markdown.replace(/\r/g, "");
+  const pattern = /(?<!!)\[([^\]\n]{4,240})\]\((https:\/\/www\.toutiao\.com\/article\/(\d+)\/)\)/g;
+  const matches = [...text.matchAll(pattern)];
+  const seen = new Set();
+  const items = [];
+  for (let index = 0; index < matches.length; index += 1) {
+    const match = matches[index];
+    const id = match[3];
+    if (seen.has(id)) continue;
+    const title = cleanText(match[1]);
+    if (!title || title.length < 4) continue;
+    seen.add(id);
+    const segmentEnd = matches[index + 1]?.index ?? Math.min(text.length, match.index + 12000);
+    const segment = text.slice(match.index + match[0].length, segmentEnd);
+    const source = segment.match(/(?<!!)\[([^\]\n]{1,80})\]\(https:\/\/www\.toutiao\.com\/c\/user\//)?.[1];
+    const relativePublished = segment.match(/(?:刚刚|\d+\s*(?:分钟|小时|天)前|\d{4}年\d{1,2}月\d{1,2}日)/)?.[0];
+    const channel = channelId ? CHANNELS[channelId] : null;
+    items.push({
+      category,
+      channel: channel?.id ?? null,
+      channelLabel: channel?.label ?? null,
+      channelRank: items.length,
+      channelPriority: channel?.priority ?? 0,
+      title,
+      source: source ? cleanText(source) : null,
+      publishedAt: null,
+      relativePublished: relativePublished ?? null,
+      url: match[2],
+      sourceUrl,
+      contentExcerpt: null,
+    });
+  }
+  return items;
+}
+
+function parseArticlePage(markdown, fallback) {
+  const text = markdown.replace(/\r/g, "");
+  const metadataTitle = text.match(/^Title:\s*(.+)$/m)?.[1];
+  const metadataPublished = text.match(/^Published Time:\s*(.+)$/m)?.[1];
+  const sourceLine = text.match(/^\d{4}-\d{2}-\d{2}\s+\d{2}:\d{2}·\[([^\]]+)\]\([^\)]+\)\s*$/m);
+  const heading = text.match(/^#{1,3}\s+(.+)$/m);
+  const bodyStart = sourceLine
+    ? sourceLine.index + sourceLine[0].length
+    : heading
+      ? heading.index + heading[0].length
+      : text.indexOf("Markdown Content:") + "Markdown Content:".length;
+  const paragraphs = [];
+  for (const rawLine of text.slice(Math.max(0, bodyStart)).split("\n")) {
+    const line = rawLine.trim();
+    if (/^(举报|评论(?:\s|$)|热门：|请先 登录|加载失败)/.test(line)) break;
+    if (!line || /^(!?\[|[*#]|搜索$|消息$|发布$|登录$)/.test(line)) continue;
+    const paragraph = cleanText(line);
+    if (paragraph.length < 12) continue;
+    paragraphs.push(paragraph);
+    if (paragraphs.length >= 3 || paragraphs.join(" ").length >= 700) break;
+  }
+  const parsedPublished = metadataPublished ? new Date(metadataPublished) : null;
+  const parsedTitle = cleanText(metadataTitle ?? heading?.[1] ?? "");
+  return {
+    ...fallback,
+    title: parsedTitle && parsedTitle !== "今日头条" ? parsedTitle : fallback.title,
+    source: sourceLine?.[1] ? cleanText(sourceLine[1]) : fallback.source,
+    publishedAt:
+      parsedPublished && !Number.isNaN(parsedPublished.valueOf())
+        ? parsedPublished.toISOString()
+        : fallback.publishedAt,
+    contentExcerpt: paragraphs.join(" ").slice(0, 900) || null,
+  };
+}
+
+function publishedAtFromRelative(value, now = new Date()) {
+  if (!value) return null;
+  if (value === "刚刚") return now.toISOString();
+  const relative = value.match(/^(\d+)\s*(分钟|小时|天)前$/);
+  if (relative) {
+    const unitMs = { 分钟: 60_000, 小时: 3_600_000, 天: 86_400_000 }[relative[2]];
+    return new Date(now.valueOf() - Number(relative[1]) * unitMs).toISOString();
+  }
+  const exact = value.match(/^(\d{4})年(\d{1,2})月(\d{1,2})日$/);
+  if (exact) {
+    return new Date(
+      `${exact[1]}-${exact[2].padStart(2, "0")}-${exact[3].padStart(2, "0")}T00:00:00+08:00`,
+    ).toISOString();
+  }
+  return null;
+}
+
+function hoursSinceShanghaiMidnight(now = new Date()) {
+  const shanghai = new Date(now.valueOf() + 8 * 3_600_000);
+  const midnightUtc =
+    Date.UTC(shanghai.getUTCFullYear(), shanghai.getUTCMonth(), shanghai.getUTCDate()) - 8 * 3_600_000;
+  return Math.max(1, (now.valueOf() - midnightUtc) / 3_600_000 + 0.25);
+}
+
+function timeRangeToMaxAgeHours(timeRange, now = new Date()) {
+  if (timeRange === "today") return hoursSinceShanghaiMidnight(now);
+  if (timeRange === "24h") return 24;
+  if (timeRange === "3d") return 72;
+  if (timeRange === "7d") return 168;
+  throw new Error(`unsupported time range: ${timeRange}`);
+}
+
+function isFresh(publishedAt, maxAgeHours, now = new Date()) {
+  if (!publishedAt) return true;
+  const time = new Date(publishedAt).valueOf();
+  if (!Number.isFinite(time)) return true;
+  return now.valueOf() - time <= maxAgeHours * 3_600_000;
+}
+
+async function fetchReader(sourceUrl, timeoutMs) {
+  if (!sourceUrl.startsWith("https://www.toutiao.com/")) throw new Error("refused non-Toutiao source URL");
+  const response = await fetch(`${READER_BASE}${sourceUrl}`, {
+    headers: { accept: "text/plain" },
+    signal: AbortSignal.timeout(timeoutMs),
+  });
+  if (!response.ok) throw new Error(`reader returned HTTP ${response.status}`);
+  const text = await response.text();
+  if (!text.trim()) throw new Error("reader returned an empty page");
+  return text;
+}
+
+async function mapLimit(items, concurrency, mapper) {
+  const results = new Array(items.length);
+  let cursor = 0;
+  async function worker() {
+    while (cursor < items.length) {
+      const index = cursor;
+      cursor += 1;
+      try {
+        results[index] = { status: "fulfilled", value: await mapper(items[index], index) };
+      } catch (reason) {
+        results[index] = { status: "rejected", reason };
+      }
+    }
+  }
+  await Promise.all(Array.from({ length: Math.min(concurrency, items.length) }, worker));
+  return results;
+}
+
+function parseArgs(argv) {
+  const topics = [];
+  const channels = [];
+  let mode = null;
+  let query = null;
+  let limit = null;
+  let timeRange = "24h";
+  let sortBy = "importance";
+  let maxAgeHours = null;
+  let timeoutMs = 35_000;
+  for (let index = 0; index < argv.length; index += 1) {
+    const arg = argv[index];
+    if (arg === "--mode") mode = argv[++index] ?? "";
+    else if (arg === "--topic") topics.push(argv[++index] ?? "");
+    else if (arg === "--channel") channels.push(argv[++index] ?? "");
+    else if (arg === "--query") query = argv[++index] ?? "";
+    else if (arg === "--time-range") timeRange = argv[++index] ?? "";
+    else if (arg === "--sort-by") sortBy = argv[++index] ?? "";
+    else if (arg === "--limit") limit = Number(argv[++index]);
+    else if (arg === "--max-age-hours") maxAgeHours = Number(argv[++index]);
+    else if (arg === "--timeout-ms") timeoutMs = Number(argv[++index]);
+    else if (arg === "--help") return { help: true };
+    else throw new Error(`unknown argument: ${arg}`);
+  }
+  mode ||= topics.length ? "topic" : channels.length ? "channel" : query ? "search" : "top";
+  if (!["top", "topic", "channel", "search"].includes(mode))
+    throw new Error("--mode must be top, topic, channel, or search");
+  const normalizedChannels = channels.map(normalizeChannel);
+  if (normalizedChannels.some((channel) => !channel))
+    throw new Error("--channel must be hot, world, finance, tech, or entertainment");
+  if (mode === "topic" && !topics.some((topic) => topic.trim())) throw new Error("topic mode requires --topic");
+  if (mode === "channel" && !normalizedChannels.length) throw new Error("channel mode requires --channel");
+  if (mode === "search" && !query?.trim()) throw new Error("search mode requires --query");
+  if (!["today", "24h", "3d", "7d"].includes(timeRange)) throw new Error("--time-range must be today, 24h, 3d, or 7d");
+  if (!["importance", "latest"].includes(sortBy)) throw new Error("--sort-by must be importance or latest");
+  limit ??= mode === "top" ? 8 : 5;
+  if (!Number.isInteger(limit) || limit < 1 || limit > 10) throw new Error("--limit must be an integer from 1 to 10");
+  if (maxAgeHours !== null && (!Number.isFinite(maxAgeHours) || maxAgeHours < 1 || maxAgeHours > 720)) {
+    throw new Error("--max-age-hours must be from 1 to 720");
+  }
+  if (!Number.isFinite(timeoutMs) || timeoutMs < 5_000 || timeoutMs > 120_000) {
+    throw new Error("--timeout-ms must be from 5000 to 120000");
+  }
+  return {
+    mode,
+    topics: topics.map((topic) => topic.trim()).filter(Boolean),
+    channels: normalizedChannels,
+    query: query?.trim().slice(0, 80) || null,
+    limit,
+    timeRange,
+    sortBy,
+    maxAgeHours: maxAgeHours ?? timeRangeToMaxAgeHours(timeRange),
+    timeoutMs,
+  };
+}
+
+function candidateImportance(candidate) {
+  return candidate.channelPriority + Math.max(0, 30 - candidate.channelRank * 4);
+}
+
+function uniqueCandidates(candidates) {
+  const byUrl = new Map();
+  for (const candidate of candidates) {
+    const existing = byUrl.get(candidate.url);
+    if (!existing) {
+      byUrl.set(candidate.url, { ...candidate, channelMentions: [candidate.channel].filter(Boolean) });
+      continue;
+    }
+    if (!existing.channelMentions.includes(candidate.channel)) existing.channelMentions.push(candidate.channel);
+    if (candidateImportance(candidate) > candidateImportance(existing)) {
+      byUrl.set(candidate.url, { ...candidate, channelMentions: existing.channelMentions });
+    }
+  }
+  return [...byUrl.values()];
+}
+
+async function channelCandidates(channelIds, category, options, perChannel) {
+  const responses = await Promise.allSettled(
+    channelIds.map(async (channelId) => {
+      const channel = CHANNELS[channelId];
+      return {
+        channel,
+        text: await fetchReader(channel.sourceUrl, options.timeoutMs),
+      };
+    }),
+  );
+  const candidates = [];
+  const warnings = [];
+  for (let index = 0; index < responses.length; index += 1) {
+    const response = responses[index];
+    const channel = CHANNELS[channelIds[index]];
+    if (response.status === "rejected") {
+      warnings.push(
+        `${channel.label} channel unavailable: ${response.reason instanceof Error ? response.reason.message : String(response.reason)}`,
+      );
+      continue;
+    }
+    const parsed = parseChannelPage(response.value.text, category, channel.sourceUrl, channel.id).slice(0, perChannel);
+    if (!parsed.length) warnings.push(`${channel.label} channel returned no article links`);
+    candidates.push(...parsed);
+  }
+  return { candidates: uniqueCandidates(candidates), warnings };
+}
+
+async function hydrateCandidates(candidates, options) {
+  const responses = await mapLimit(candidates, 5, async (candidate) => {
+    const text = await fetchReader(candidate.url, options.timeoutMs);
+    return parseArticlePage(text, {
+      ...candidate,
+      publishedAt: publishedAtFromRelative(candidate.relativePublished),
+    });
+  });
+  const items = [];
+  const warnings = [];
+  for (let index = 0; index < candidates.length; index += 1) {
+    const candidate = candidates[index];
+    const response = responses[index];
+    const fallback = {
+      ...candidate,
+      publishedAt: publishedAtFromRelative(candidate.relativePublished),
+    };
+    const item = response.status === "fulfilled" ? response.value : fallback;
+    if (!isFresh(item.publishedAt, options.maxAgeHours)) continue;
+    items.push(item);
+    if (response.status === "rejected") warnings.push(`article detail unavailable for ${candidate.url}`);
+  }
+  return { items, warnings };
+}
+
+function recencyScore(publishedAt, now = new Date()) {
+  if (!publishedAt) return 0;
+  const hours = (now.valueOf() - new Date(publishedAt).valueOf()) / 3_600_000;
+  if (!Number.isFinite(hours)) return 0;
+  if (hours <= 3) return 25;
+  if (hours <= 12) return 16;
+  if (hours <= 24) return 8;
+  return 0;
+}
+
+function sortItems(items, sortBy) {
+  if (sortBy === "latest") {
+    return items.sort((a, b) => new Date(b.publishedAt ?? 0).valueOf() - new Date(a.publishedAt ?? 0).valueOf());
+  }
+  return items.sort((a, b) => {
+    const aScore =
+      candidateImportance(a) + Math.max(0, (a.channelMentions?.length ?? 1) - 1) * 12 + recencyScore(a.publishedAt);
+    const bScore =
+      candidateImportance(b) + Math.max(0, (b.channelMentions?.length ?? 1) - 1) * 12 + recencyScore(b.publishedAt);
+    return bScore - aScore;
+  });
+}
+
+function publicItem(item, category) {
+  return {
+    category,
+    channel: item.channel,
+    channelLabel: item.channelLabel,
+    title: item.title,
+    source: item.source,
+    publishedAt: item.publishedAt,
+    relativePublished: item.relativePublished,
+    url: item.url,
+    sourceUrl: item.sourceUrl,
+    contentExcerpt: item.contentExcerpt,
+  };
+}
+
+function categoryResult(category, channel, sourceUrl, items, warnings, expected) {
+  const status = items.length >= expected ? "ok" : items.length ? "partial" : "error";
+  const outputWarnings = [...warnings];
+  if (items.length < expected) outputWarnings.push(`only ${items.length} matching fresh items were available`);
+  return { category, channel, sourceUrl, status, items, warnings: outputWarnings };
+}
+
+async function collectTop(options) {
+  const category = "今日重要新闻";
+  const found = await channelCandidates(TOP_CHANNELS, category, options, Math.min(6, options.limit + 2));
+  const rankedCandidates = [...found.candidates].sort((a, b) => candidateImportance(b) - candidateImportance(a));
+  const hydrated = await hydrateCandidates(rankedCandidates.slice(0, Math.min(24, options.limit * 3)), options);
+  const items = sortItems(hydrated.items, options.sortBy)
+    .slice(0, options.limit)
+    .map((item) => publicItem(item, category));
+  return [
+    categoryResult(
+      category,
+      "top",
+      CHANNELS.hot.sourceUrl,
+      items,
+      [...found.warnings, ...hydrated.warnings],
+      options.limit,
+    ),
+  ];
+}
+
+async function collectChannel(channelId, category, options) {
+  const channel = CHANNELS[channelId];
+  const found = await channelCandidates([channelId], category, options, options.limit + 4);
+  const hydrated = await hydrateCandidates(found.candidates, options);
+  const items = sortItems(hydrated.items, options.sortBy)
+    .slice(0, options.limit)
+    .map((item) => publicItem(item, category));
+  return categoryResult(
+    category,
+    channelId,
+    channel.sourceUrl,
+    items,
+    [...found.warnings, ...hydrated.warnings],
+    options.limit,
+  );
+}
+
+function queryTokens(query) {
+  const cleaned = query
+    .toLowerCase()
+    .replace(/(今天|今日|最近|近期|相关|关于|新闻|消息|资讯|报道|内容)/g, " ")
+    .replace(/[^\p{L}\p{N}]+/gu, " ")
+    .trim();
+  if (!cleaned) return [];
+  return cleaned.split(/\s+/).filter((token) => token && !["的", "中", "内", "里"].includes(token));
+}
+
+function matchesQuery(item, tokens) {
+  const haystack = `${item.title} ${item.source ?? ""} ${item.contentExcerpt ?? ""}`.toLowerCase();
+  return tokens.every((token) => haystack.includes(token));
+}
+
+async function collectSearch(query, options) {
+  const category = `搜索：${query}`;
+  const tokens = queryTokens(query);
+  const found = await channelCandidates(SEARCH_CHANNELS, category, options, Math.max(8, options.limit + 3));
+  const ordered = [...found.candidates].sort((a, b) => candidateImportance(b) - candidateImportance(a));
+  const direct = ordered.filter((candidate) => matchesQuery(candidate, tokens));
+  const pool = uniqueCandidates([...direct, ...ordered]).slice(0, Math.max(20, options.limit * 3));
+  const hydrated = await hydrateCandidates(pool, options);
+  const items = sortItems(
+    hydrated.items.filter((item) => matchesQuery(item, tokens)),
+    options.sortBy,
+  )
+    .slice(0, options.limit)
+    .map((item) => publicItem(item, category));
+  const warnings = [...found.warnings, ...hydrated.warnings];
+  if (!items.length) warnings.push(`no matching items for ${query} were found in the public channel pages`);
+  return categoryResult(category, "search", CHANNELS.hot.sourceUrl, items, warnings, options.limit);
+}
+
+async function collectNews(options) {
+  let categories = [];
+  const warnings = [];
+  if (options.mode === "top") categories = await collectTop(options);
+  if (options.mode === "channel") {
+    categories = await Promise.all(
+      options.channels.map((channelId) => collectChannel(channelId, CHANNELS[channelId].label, options)),
+    );
+  }
+  if (options.mode === "search") categories = [await collectSearch(options.query, options)];
+  if (options.mode === "topic") {
+    for (const topic of options.topics) {
+      const selection = topicToSelection(topic);
+      categories.push(
+        selection
+          ? await collectChannel(selection.id, selection.category, options)
+          : await collectSearch(topic, options),
+      );
+    }
+  }
+  const itemCount = categories.reduce((sum, category) => sum + category.items.length, 0);
+  const complete = categories.length > 0 && categories.every((category) => category.status === "ok");
+  return {
+    site: "今日头条",
+    fetchedAt: new Date().toISOString(),
+    request: {
+      mode: options.mode,
+      topics: options.topics,
+      channels: options.channels,
+      query: options.query,
+      timeRange: options.timeRange,
+      sortBy: options.sortBy,
+      limit: options.limit,
+    },
+    status: itemCount === 0 ? "error" : complete ? "ok" : "partial",
+    categories,
+    warnings,
+  };
+}
+
+async function main() {
+  try {
+    const options = parseArgs(process.argv.slice(2));
+    if (options.help) {
+      process.stdout.write(
+        "toutiao-fetch --mode <top|topic|channel|search> [--topic <topic>] [--channel <channel>] [--query <query>] [--time-range <today|24h|3d|7d>] [--sort-by <importance|latest>] [--limit 1-10]\n",
+      );
+      return;
+    }
+    const result = await collectNews(options);
+    process.stdout.write(`${JSON.stringify(result, null, 2)}\n`);
+    if (result.status === "error") process.exitCode = 1;
+  } catch (error) {
+    process.stdout.write(
+      `${JSON.stringify({ site: "今日头条", status: "error", error: error instanceof Error ? error.message : String(error) }, null, 2)}\n`,
+    );
+    process.exitCode = 1;
+  }
+}
+
+if (require.main === module) main();
+
+module.exports = {
+  CHANNELS,
+  cleanText,
+  collectNews,
+  isFresh,
+  matchesQuery,
+  normalizeChannel,
+  parseArgs,
+  parseArticlePage,
+  parseChannelPage,
+  publishedAtFromRelative,
+  queryTokens,
+  sortItems,
+  timeRangeToMaxAgeHours,
+  topicToSelection,
+};

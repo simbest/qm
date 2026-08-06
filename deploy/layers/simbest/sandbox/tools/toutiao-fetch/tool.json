@@ -1,0 +1,15 @@
+{
+  "id": "toutiao-fetch",
+  "label": "今日头条公开新闻",
+  "advertise": "toutiao-fetch --mode <top|topic|channel|search> [--topic <topic>] [--channel <hot|world|finance|tech|entertainment>] [--query <query>] [--time-range <today|24h|3d|7d>] [--sort-by <importance|latest>] [--limit 1-10]",
+  "hints": [
+    "For an explicit Toutiao retrieval request, call execute in the same turn to read skills/toutiao/SKILL.md and run toutiao-fetch; never end the turn after only announcing that you will do so",
+    "Use top for broad important-news requests, topic for named themes, channel for explicit sections, and search for people, companies, events, or free-form keywords",
+    "Search filters the current public Toutiao channel pages and is not a complete site-wide search",
+    "Returns structured JSON with source links, publication times, and content excerpts"
+  ],
+  "egress": ["r.jina.ai"],
+  "install": {
+    "binary": "toutiao-fetch"
+  }
+}

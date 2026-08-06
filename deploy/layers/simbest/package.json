@@ -1,0 +1,25 @@
+{
+  "name": "simbest-qm-deployment",
+  "version": "0.0.0",
+  "dependencies": {
+    "@yc-software/qm": "0.1.4"
+  },
+  "private": true,
+  "engines": {
+    "node": ">=24.0.0"
+  },
+  "scripts": {
+    "qm": "qm",
+    "check": "qm check",
+    "plan": "qm plan",
+    "deploy": "qm up",
+    "status": "qm status",
+    "conformance": "qm conformance --static",
+    "build:sandbox-local": "docker build --platform linux/amd64 -f images/sandbox-local/Dockerfile -t simbest-sandbox:mvp-0.1.8 ../../..",
+    "build:web-ui-local": "docker build -f images/web-ui-local/Dockerfile -t simbest-web-ui-local:0.1.5 .",
+    "build:admin-local": "docker build -f images/admin-local/Dockerfile -t simbest-admin-local:0.1.0 .",
+    "test:toutiao": "node --test test/toutiao-fetch.test.cjs",
+    "test:gateway": "node --test test/glm-responses.test.mjs",
+    "test": "node --test test/*.test.cjs test/*.test.mjs"
+  }
+}
