@@ -1,0 +1,4 @@
+interface:
+  display_name: "百度热搜"
+  short_description: "读取百度实时热搜榜单并解读热门话题"
+  default_prompt: "Use $baidu to read Baidu's realtime hot-search list and summarize the trending topics."

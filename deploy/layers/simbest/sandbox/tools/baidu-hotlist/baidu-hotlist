@@ -1,0 +1,129 @@
+#!/usr/bin/env node
+"use strict";
+
+// 百度热搜抓取工具（MVP）：读取 top.baidu.com 的公开热搜榜单 JSON。
+// 只给"热搜词 + 百度搜索链接 + 标签"，无正文/摘要——据此让模型解读热门话题。
+
+const DEFAULT_UA =
+  "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36";
+const TABS = new Set(["realtime", "phrase"]);
+const BOARD_URL = (tab) => `https://top.baidu.com/api/board?platform=wise&tab=${encodeURIComponent(tab)}`;
+
+function parseArgs(argv) {
+  let limit = 20;
+  let tab = "realtime";
+  let timeoutMs = 20_000;
+  for (let index = 0; index < argv.length; index += 1) {
+    const arg = argv[index];
+    if (arg === "--limit") limit = Number(argv[++index]);
+    else if (arg === "--tab") tab = String(argv[++index] ?? "");
+    else if (arg === "--timeout-ms") timeoutMs = Number(argv[++index]);
+    else if (arg === "--help") return { help: true };
+    else throw new Error(`unknown argument: ${arg}`);
+  }
+  if (!TABS.has(tab)) throw new Error("--tab must be realtime or phrase");
+  if (!Number.isInteger(limit) || limit < 1 || limit > 50) throw new Error("--limit must be an integer from 1 to 50");
+  if (!Number.isFinite(timeoutMs) || timeoutMs < 5_000 || timeoutMs > 60_000) {
+    throw new Error("--timeout-ms must be from 5000 to 60000");
+  }
+  return { limit, tab, timeoutMs };
+}
+
+function tagOf(item) {
+  // labelTagName（辟谣/沸/爆…）与 newHotName（热/新）一般不同时出现，都作为标签。
+  if (item.labelTagName) return String(item.labelTagName);
+  if (item.newHotName) return String(item.newHotName);
+  return "";
+}
+
+// 百度 board 的结构是 data.cards[].content[]，但热词条目有时直接挂在 content 上、
+// 有时再包一层 content[0].content[]（实测 wise 平台是后者）。这里两者都兼容，按"含有
+// .word 的最深 content 数组"定位，避免百度改版时整条链路失效。
+function findHotItems(cards) {
+  if (!Array.isArray(cards)) return null;
+  for (const card of cards) {
+    if (!card || !Array.isArray(card.content)) continue;
+    if (card.content.some((entry) => entry && typeof entry.word === "string")) {
+      return card.content.filter((entry) => entry && typeof entry.word === "string");
+    }
+    for (const wrap of card.content) {
+      if (wrap && Array.isArray(wrap.content) && wrap.content.some((entry) => entry && typeof entry.word === "string")) {
+        return wrap.content.filter((entry) => entry && typeof entry.word === "string");
+      }
+    }
+  }
+  return null;
+}
+
+function extractItems(payload) {
+  const hot = findHotItems(payload?.data?.cards);
+  if (!hot) throw new Error("board response has no hot-search items");
+  const items = [];
+  for (const raw of hot) {
+    if (!raw || raw.isTop === true) continue; // 跳过置顶（通常为推广/口号，无 index）
+    const rank = Number(raw.index);
+    const word = typeof raw.word === "string" ? raw.word.trim() : "";
+    const url = typeof raw.url === "string" ? raw.url : "";
+    if (!Number.isInteger(rank) || rank < 1 || !word) continue;
+    items.push({ rank, word, url, tag: tagOf(raw) });
+  }
+  return items.sort((a, b) => a.rank - b.rank);
+}
+
+async function fetchBoard(tab, timeoutMs) {
+  const response = await fetch(BOARD_URL(tab), {
+    headers: { accept: "application/json", "user-agent": DEFAULT_UA },
+    signal: AbortSignal.timeout(timeoutMs),
+  });
+  if (!response.ok) throw new Error(`board returned HTTP ${response.status}`);
+  const text = await response.text();
+  if (!text.trim()) throw new Error("board returned an empty body");
+  try {
+    return JSON.parse(text);
+  } catch {
+    throw new Error("board returned a non-JSON body");
+  }
+}
+
+async function collectHotlist(options) {
+  const payload = await fetchBoard(options.tab, options.timeoutMs);
+  const items = extractItems(payload).slice(0, options.limit);
+  return {
+    site: "百度热搜",
+    fetchedAt: new Date().toISOString(),
+    tab: options.tab,
+    status: items.length ? "ok" : "error",
+    items,
+    warnings: items.length ? [] : [`no hot-search items found in tab ${options.tab}`],
+  };
+}
+
+function helpText() {
+  return "baidu-hotlist [--limit 1-50] [--tab realtime|phrase]\n";
+}
+
+async function main() {
+  try {
+    const options = parseArgs(process.argv.slice(2));
+    if (options.help) {
+      process.stdout.write(helpText());
+      return;
+    }
+    const result = await collectHotlist(options);
+    process.stdout.write(`${JSON.stringify(result, null, 2)}\n`);
+    if (result.status === "error") process.exitCode = 1;
+  } catch (error) {
+    process.stdout.write(
+      `${JSON.stringify(
+        { site: "百度热搜", status: "error", error: error instanceof Error ? error.message : String(error) },
+        null,
+        2,
+      )}\n`,
+    );
+    process.exitCode = 1;
+  }
+}
+
+if (require.main === module) main();
+
+module.exports = { parseArgs, extractItems, tagOf, collectHotlist };

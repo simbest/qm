@@ -57,7 +57,7 @@
       "OPENAI_BASE_URL": "http://glm-responses:8080/v1",
       "SANDBOX_BACKEND": "local",
       "LOCAL_SANDBOX_HOST": "host.docker.internal",
-      "LOCAL_SANDBOX_IMAGE": "simbest-sandbox:mvp-0.1.8",
+      "LOCAL_SANDBOX_IMAGE": "simbest-sandbox:mvp-0.1.9",
       "TURN_WALL_CLOCK_SEC": "300",
     },
     "web-ui": {

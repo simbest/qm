@@ -1,0 +1,15 @@
+{
+  "id": "baidu-hotlist",
+  "label": "百度热搜",
+  "advertise": "baidu-hotlist [--limit 1-50] [--tab realtime|phrase]",
+  "hints": [
+    "用户要看百度热搜/热点榜/热搜榜时，同一回合内就 call execute 运行 baidu-hotlist，不要只口头说要抓",
+    "默认 tab=realtime（实时热搜）、limit=20；tab=phrase 为热词榜",
+    "只返回热搜词+百度搜索链接+标签（热/新/辟谣等），无正文；据此解读热门话题即可",
+    "不要凭热搜词编造事件细节；区分'上榜'与'已核实'"
+  ],
+  "egress": ["top.baidu.com"],
+  "install": {
+    "binary": "baidu-hotlist"
+  }
+}

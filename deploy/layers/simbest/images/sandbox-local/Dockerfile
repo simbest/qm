@@ -1,12 +1,11 @@
 FROM simbest-sandbox:mvp-0.1.5
 
 COPY aws/microvm-agent/agent.mjs /opt/microvm-agent/agent.mjs
-COPY deploy/layers/simbest/sandbox/tools/codex-glm-provider/codex-glm-provider /usr/local/bin/codex-glm-provider
-COPY deploy/layers/simbest/sandbox/tools/toutiao-fetch/toutiao-fetch /usr/local/bin/toutiao-fetch
+COPY deploy/layers/simbest/sandbox/tools/baidu-hotlist/baidu-hotlist /usr/local/bin/baidu-hotlist
 
 RUN chmod -R a+rx /usr/local/bin
 
-LABEL org.simbest.local="mvp-0.1.8"
+LABEL org.simbest.local="mvp-0.1.9"
 
 ENV HOME=/root
 WORKDIR /root

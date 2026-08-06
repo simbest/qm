@@ -15,8 +15,8 @@ PR 号等)由根 `AGENTS.md` 的 "Private forks" 章节给出,上游维护、随
 
 ## 私货清单(只在 `deploy/layers/simbest/`)
 
-- `plugins/glm-responses/` — **pi 的 GLM 网关**(核心,勿删):responses↔chat 协议转换 + toutiao 智能路由/结果结构化 + 工具协议强化 + model 伪装(`gpt-5.6-sol`→`glm-5.2`)。当前 pi 经它接 GLM(`OPENAI_BASE_URL=http://glm-responses:8080/v1`)
-- `sandbox/tools/toutiao-fetch/` + `sandbox/skills/toutiao/` — 头条抓取工具与 skill
+- `plugins/glm-responses/` — **pi 的 GLM 网关**(核心,勿删):responses↔chat 协议转换 + 工具协议强化(让 GLM 走 native function calling)+ model 伪装(`gpt-5.6-sol`→`glm-5.2`)。当前 pi 经它接 GLM(`OPENAI_BASE_URL=http://glm-responses:8080/v1`)。2026-08-06 删头条改百度热搜后,网关已还原为纯协议转换,业务逻辑回到标准 skill 机制。
+- `sandbox/tools/baidu-hotlist/` + `sandbox/skills/baidu/` — 百度热搜抓取工具与 skill(MVP 示例:国内可达、无需鉴权)
 - `web-ui/locales/zh-CN.json` + `web-ui/scripts/patch-zh.mjs` — 中文界面
 - `qm.config.jsonc`、`images/*/Dockerfile`、`test/`、`slack-app-manifest.yml` 等部署物料
 
@@ -24,7 +24,7 @@ PR 号等)由根 `AGENTS.md` 的 "Private forks" 章节给出,上游维护、随
 
 - **harness 用 pi**(`qm.config.jsonc`: `HARNESS=pi`),**已弃用 codex**。
 - pi 通过 `glm-responses` 网关接 GLM,**不是** pi-ai 直连,也**未启用**官方 `custom provider`。
-- 官方 `custom provider` 虽支持 pi + GLM,但**不能替代 `glm-responses`**——网关里寄居着 toutiao 业务逻辑(路由/结构化/工具协议),改直连会丢失这些。故保留网关。
+- 官方 `custom provider` 虽支持 pi + GLM,但**不能替代 `glm-responses`**——网关做 responses↔chat 协议转换 + 工具协议强化(让 GLM 走 native function calling)+ model 伪装,改直连会丢失这些。故保留网关。
 - 已删除 `sandbox/tools/codex-glm-provider/`(codex 专属,弃用 codex 后无用;官方 `custom provider` 本就管不到 codex,删它安全)。
 
 ## 分支策略
