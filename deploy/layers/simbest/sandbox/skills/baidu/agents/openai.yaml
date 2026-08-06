@@ -1,4 +1,4 @@
 interface:
   display_name: "百度热搜"
-  short_description: "读取百度实时热搜榜单并解读热门话题"
-  default_prompt: "Use $baidu to read Baidu's realtime hot-search list and summarize the trending topics."
+  short_description: "读取百度实时热搜榜单，中文解读热点，并在回答末尾以 JSON 展示榜单条目"
+  default_prompt: "用 $baidu 读取百度实时热搜榜单，用中文解读当下热点，并在回答正文之后追加一个 JSON 代码块，展示抓取到的热搜条目（字段：rank/title/url/tag，把工具返回的 word 改名为 title）。"
