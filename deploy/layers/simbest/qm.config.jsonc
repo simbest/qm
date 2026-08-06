@@ -20,9 +20,9 @@
   "services": ["core", "web-ui", "admin"],
 
   "imageOverrides": {
-    "core": "simbest-core-local:0.1.6",
-    "web-ui": "simbest-web-ui-local:0.1.5",
-    "admin": "simbest-admin-local:0.1.0",
+    "core": "simbest-core-local:0.2.0",
+    "web-ui": "simbest-web-ui-local:0.2.0",
+    "admin": "simbest-admin-local:0.2.0",
   },
 
   // Extra plugins to run alongside the services. A prebuilt image runs with

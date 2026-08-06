@@ -1,4 +1,4 @@
-FROM ghcr.io/yc-software/qm/core@sha256:bee03e7f22719dfe76ea2c83bb65db2bdefd55b714eae4014007033800bdb5ab
+FROM simbest-core:source
 
 USER root
 RUN apk add --no-cache docker-cli

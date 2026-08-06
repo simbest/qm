@@ -1,4 +1,4 @@
-FROM simbest-web-ui-local:0.1.4
+FROM simbest-web-ui:source
 
 USER root
 COPY images/web-ui-local/patch.mjs /tmp/patch.mjs
