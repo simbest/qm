@@ -46,6 +46,44 @@ PR 号等)由根 `AGENTS.md` 的 "Private forks" 章节给出,上游维护、随
    (`.gitignore` 自动排除 `.env`、`node_modules`、`.generated`)
 5. 推送:`git push origin tl-cooker`
 
+## 本地镜像重建与中文化
+
+simbest 的三个服务镜像(core/web-ui/admin)都是 `FROM <service>:source` 基镜像
+再叠加 layer 定制 patch:
+
+| 镜像 | 基镜像 | 定制内容 |
+|---|---|---|
+| `simbest-core-local` | `simbest-core:source` | sed 注入 baseUrl / local-sandbox host + 装 docker-cli |
+| `simbest-web-ui-local` | `simbest-web-ui:source` | `patch.mjs` 改 server(免签测试登录) |
+| `simbest-admin-local` | `simbest-admin:source` | `patch.mjs` |
+
+**中文化**(`web-ui/locales/zh-CN.json` + `web-ui/scripts/patch-zh.mjs`)在 build
+`simbest-web-ui:source` 基镜像时执行(`web-ui/Dockerfile` 的 patch 阶段):遍历
+`dist-web` 把英文替换成中文,再给所有 JS 加 `.zh-<hash>` 缓存后缀并同步 `index.html`。
+
+> ⚠️ **重建 source 镜像必须 `--no-cache`**。否则 BuildKit 会缓存命中、跳过
+> `RUN node /tmp/patch-zh.mjs` 那一层,产物变纯英文——中文功能**静默失效**(页面照常
+> 打开,只是全英文),且 build 不报错。2026-08-06 的 0.2.0 重建踩过这个坑。
+
+### 正确的重建流程(在 `deploy/layers/simbest/` 下)
+
+```bash
+npm run build:web-ui-source   # --no-cache,保证 patch-zh 必执行
+npm run build:web-ui-local    # 继承中文化 source,打 :0.2.0
+npm run deploy                # qm up,用新镜像重建容器
+```
+
+> 各 local 镜像的 build script 都在 `package.json`,tag 已对齐 `qm.config.jsonc`
+> 的 `imageOverrides`。**改 config 里的 tag 后,记得同步 `package.json` 的
+> `build:*-local` tag**,否则会 build 出与 config 不符的旧 tag。
+
+### 验证中文化
+
+```bash
+curl -s http://localhost:8082 | grep -o 'index-[^"]*\.js'   # 应含 .zh-<hash> 后缀
+```
+页面标题 `QM · Web`(英文) → `QM · 工作台`(中文)。
+
 ## 定期同步上游
 
 用 `/update-qm` skill:`upstream/main` → 新建 sync 分支 → 合并 → PR → 合并进 `main`。
