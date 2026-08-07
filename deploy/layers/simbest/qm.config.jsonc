@@ -59,11 +59,14 @@
       "LOCAL_SANDBOX_HOST": "host.docker.internal",
       "LOCAL_SANDBOX_IMAGE": "simbest-sandbox:mvp-0.1.9",
       "TURN_WALL_CLOCK_SEC": "300",
+      "ORG_BRAND_MARK": "S",
+      "ORG_BRAND_SELF_LABEL": "细码助理",
     },
     "web-ui": {
       "NODE_ENV": "test",
       "ALLOW_UNSIGNED_TEST_IDENTITY": "1",
       "WEB_UI_PRINCIPALS": "admin,zhangsan",
+      "WEB_UI_FAVICON_EMOJI": "S",
     },
     "admin": {
       "NODE_ENV": "test",

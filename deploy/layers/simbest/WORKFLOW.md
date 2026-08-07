@@ -19,6 +19,7 @@ PR 号等)由根 `AGENTS.md` 的 "Private forks" 章节给出,上游维护、随
 - `sandbox/tools/baidu-hotlist/` + `sandbox/skills/baidu/` — 百度热搜抓取工具与 skill(MVP 示例:国内可达、无需鉴权)
 - `web-ui/locales/zh-CN.json` + `web-ui/scripts/patch-zh.mjs` — 中文界面
 - `qm.config.jsonc`、`images/*/Dockerfile`、`test/`、`slack-app-manifest.yml` 等部署物料
+- 品牌/UI 覆盖(favicon、品牌名、侧边栏字母、隐藏对话框控件)的逐项变更记录见 `SIMBEST_CUSTOM.md`
 
 ## 模型接入决策(2026-08-06)
 
@@ -54,7 +55,7 @@ simbest 的三个服务镜像(core/web-ui/admin)都是 `FROM <service>:source` �
 | 镜像 | 基镜像 | 定制内容 |
 |---|---|---|
 | `simbest-core-local` | `simbest-core:source` | sed 注入 baseUrl / local-sandbox host + 装 docker-cli |
-| `simbest-web-ui-local` | `simbest-web-ui:source` | `patch.mjs` 改 server(免签测试登录) |
+| `simbest-web-ui-local` | `simbest-web-ui:source` | `patch.mjs` 改 server:免签测试登录 + 标题后缀(Web→工作台) + 隐藏对话框控件 CSS + 隐藏侧边栏"应用"/"钥匙串"入口 |
 | `simbest-admin-local` | `simbest-admin:source` | `patch.mjs` |
 
 **中文化**(`web-ui/locales/zh-CN.json` + `web-ui/scripts/patch-zh.mjs`)在 build
@@ -82,7 +83,7 @@ npm run deploy                # qm up,用新镜像重建容器
 ```bash
 curl -s http://localhost:8082 | grep -o 'index-[^"]*\.js'   # 应含 .zh-<hash> 后缀
 ```
-页面标题 `QM · Web`(英文) → `QM · 工作台`(中文)。
+页面标题随品牌 env 变化:配 `ORG_BRAND_SELF_LABEL=细码助理` 后,源标题 `${label} · Web` 经 `patch.mjs` 改成 `${label} · 工作台`,即 `细码助理 · 工作台`(中文界面由 `patch-zh` 负责)。
 
 ## 定期同步上游
 
