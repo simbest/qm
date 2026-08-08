@@ -57,27 +57,33 @@
 - **决策**:官方本就提供 `ORG_BRAND_MARK`/`ORG_BRAND_SELF_LABEL` 配置点,直接用 env;
   favicon 有 `WEB_UI_FAVICON_EMOJI`。标题后缀官方无 env,故用 `patch.mjs` 文本替换。
 
-### 4. 隐藏对话框控件(2026-08-07)
+### 4. 隐藏对话框控件(2026-08-07,2026-08-08 调整)
 
-- **需求**:对话框(composer)里的"思考深度""模型""引擎"及齿轮设置不对用户展示。
+- **需求**:对话框(composer)里的"模型""引擎"及齿轮设置不对用户展示(纯 GLM 单模型部署,
+  picker 经网关伪装显示 GPT 系,对终端用户误导;用户无需切换)。
 - **决策**:官方无配置隐藏这些控件,故走 **build 期 CSS 覆盖**(客户端 `display:none`),
   不删服务端逻辑,可恢复。
 - **实现**:`images/web-ui-local/patch.mjs` 在 `brandIndexHtml` 的 `injectBranding` 之后,
   往 `</head>` 前注入:
 
   ```css
-  .menu-control.model-control,                                  /* 模型 */
-  .menu-control.harness-control,                                /* 引擎 */
-  .menu-control.settings-control,                               /* 齿轮(含模型/引擎/思考深度/快速模式) */
-  .menu-control:has([aria-controls="composer-effort-menu"])     /* 思考深度(effort 无专属类,靠 aria-controls 定位) */
+  .menu-control.model-control,      /* 模型 picker(显示 GPT 系,经 glm-responses 网关伪装到 GLM) */
+  .menu-control.harness-control,    /* 引擎 picker(单 pi) */
+  .menu-control.settings-control,   /* 齿轮(含模型/引擎/思考深度/快速模式另一入口) */
+  .fast-toggle                      /* Zap 快速模式(fastMode 仅 Opus,GLM 永久禁用,显示"快速"误导) */
   { display: none !important; }
   ```
 
+- **🧠 effort 菜单保留显示**(2026-08-08 调整):glm-responses 网关新增 `mapThinkingFromEffort`
+  (High/XHigh/Max → GLM `thinking:enabled`,其余 → `disabled`),🧠 Brain 菜单成为用户控制
+  GLM 思考的入口(Auto=快 / High=深思),故从隐藏列表**移除** `.menu-control:has([aria-controls="composer-effort-menu"])`,
+  并**新增** `.fast-toggle`(Zap 对 GLM 无效且误导)。原 2026-08-07 把 effort 一起藏了(那时
+  网关不透传 thinking,🧠 无效)。
 - **选择器来源**:`composer.ts` 的 `menuControl` 按 `kind` 设 `controlClass`
-  (`model`→`model-control`、`harness`→`harness-control`、effort→无类但有
-  `aria-controls="composer-effort-menu"`);齿轮是 `settingsControl`(`settings-control`)。
-- **风险**:上游若重命名 `controlClass`/`aria-controls`,隐藏失效(控件重新出现,非崩溃);
-  patch 的 `hideBefore` 锚点校验会在 `injectBranding` 调用点变化时抛错。需要时重新对齐选择器。
+  (`model`→`model-control`、`harness`→`harness-control`);Zap 是 `<button class="fast-toggle">`;
+  effort 菜单无 controlClass(靠 `aria-controls="composer-effort-menu"`),现保留显示。
+- **风险**:上游若重命名 `controlClass`/`fast-toggle` class,隐藏失效(控件重新出现,非崩溃);
+  `hideBefore` 锚点校验会在 `injectBranding` 调用点变化时抛错。需要时重新对齐选择器。
 
 ### 5. 隐藏侧边栏技术入口:应用 / 钥匙串(2026-08-07)
 

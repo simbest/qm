@@ -92,6 +92,15 @@ function responseToolChoiceToChat(choice) {
   return undefined;
 }
 
+// Map OpenAI Responses `reasoning.effort` (pi 传来的思考档位) to GLM's `thinking` param.
+// ⚠️ 实测 pi 默认(auto)发 effort="medium"(pi-ai 在 thinkingLevel 未明确时的 fallback, 带
+// summary:"auto")—— 故 medium 必须归 disabled, 否则默认就开思考(首字 20s+)。只有用户在 UI
+// 🧠 菜单显式选 High/XHigh/Max (pi 发 high/xhigh/max) 才开深度思考。GLM thinking 仅二档。
+function mapThinkingFromEffort(effort) {
+  const e = typeof effort === "string" ? effort.toLowerCase() : "";
+  return { type: ["high", "xhigh", "max"].includes(e) ? "enabled" : "disabled" };
+}
+
 export function responsesToChat(body, upstreamModel) {
   const messages = responseInputToMessages(body.input);
   const tools = responsesToolsToChat(body.tools);
@@ -110,6 +119,10 @@ export function responsesToChat(body, upstreamModel) {
     ...(toolChoice !== undefined ? { tool_choice: toolChoice } : {}),
     ...(typeof body.parallel_tool_calls === "boolean" ? { parallel_tool_calls: body.parallel_tool_calls } : {}),
     ...(Number.isFinite(body.max_output_tokens) ? { max_tokens: body.max_output_tokens } : {}),
+    // effort 映射: pi 把思考档位放进 body.reasoning.effort (见 mapThinkingFromEffort)。
+    // GLM-5.2 默认深度思考首字 20s+; 默认 auto→"none"→disabled (首字~0.7s 逐字流);
+    // UI 选 Medium+ → enabled (深思). 原生 function calling 不受影响 (已验证)。
+    thinking: mapThinkingFromEffort(body.reasoning?.effort),
     stream: body.stream === true,
     ...(body.stream === true ? { stream_options: { include_usage: true } } : {}),
   };
@@ -471,8 +484,10 @@ async function relayChatStream(upstream, res, requestedModel, tools) {
       const delta = chunkBody.choices?.[0]?.delta;
       if (!delta) continue;
       if (typeof delta.content === "string") {
-        if (state.tools.length) state.bufferedText += delta.content;
-        else emitTextDelta(res, state, delta.content);
+        // 始终逐字流式透传。旧逻辑在有 tools 时把 content 攒进 bufferedText、
+        // 直到结束才一次性吐,导致 stream_ms≈0、UI 无法逐字展示。
+        // GLM 原生 function calling 正常,不再需要缓冲后再解析文本伪 tool call。
+        emitTextDelta(res, state, delta.content);
       }
       for (const call of Array.isArray(delta.tool_calls) ? delta.tool_calls : []) emitToolDelta(res, state, call);
     }

@@ -33,7 +33,7 @@ const titleAfter = '<title>${label} · 工作台</title>';
 
 if (!source.includes(importBefore) || !source.includes(handlerBefore)) throw new Error("web-ui source shape changed");
 const hideBefore = '  const branded = injectBranding(html, branding);';
-const hideAfter = '  const branded = injectBranding(html, branding).replace("</head>", () => `<style>.menu-control.model-control,.menu-control.harness-control,.menu-control.settings-control,.menu-control:has([aria-controls="composer-effort-menu"]){display:none !important}a.navrow[data-view="deploys"]{display:none !important}a.navrow[data-view="keychain"]{display:none !important}</style></head>`);';
+const hideAfter = '  const branded = injectBranding(html, branding).replace("</head>", () => `<style>.menu-control.model-control,.menu-control.harness-control,.menu-control.settings-control,.fast-toggle{display:none !important}a.navrow[data-view="deploys"]{display:none !important}a.navrow[data-view="keychain"]{display:none !important}</style></head>`);';
 
 if (!source.includes(titleBefore)) throw new Error("web-ui title shape changed");
 if (!source.includes(hideBefore)) throw new Error("web-ui branding-inject shape changed");

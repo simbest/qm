@@ -69,10 +69,17 @@ simbest 的三个服务镜像(core/web-ui/admin)都是 `FROM <service>:source` �
 ### 正确的重建流程(在 `deploy/layers/simbest/` 下)
 
 ```bash
-npm run build:web-ui-source   # --no-cache,保证 patch-zh 必执行
-npm run build:web-ui-local    # 继承中文化 source,打 :0.2.0
-npm run deploy                # qm up,用新镜像重建容器
+npm run build:web-ui   # = build:web-ui-source(--no-cache 中文化)&& build:web-ui-local(patch.mjs 定制)
+npm run deploy         # qm up,用新镜像重建容器
 ```
+
+> ⚠️ **切勿** `docker build -f web-ui/Dockerfile -t simbest-web-ui-local:...` 直接拿 source
+> 层 Dockerfile 打 local tag —— 会跳过 `images/web-ui-local/patch.mjs`(免签登录 + 标题「工作台」
+> + 隐藏控件/sidebar CSS),定制**静默失效**(server 照常起,只表现为英文标题、被藏控件冒出)。
+> web-ui 是**两层** build:`source`(web-ui/Dockerfile)→ `local`(images/web-ui-local/Dockerfile,
+> FROM :source + patch.mjs)。`build:web-ui` 已串好两步;core/admin 同构(见镜像表)。
+> 各 web-ui 改动后,务必 `curl -s http://localhost:8082 | grep -o '工作台\|fast-toggle'` 复核
+> patch.mjs 注入存在(标题=「工作台」、隐藏 CSS 含定制选择器)——缺即说明 patch.mjs 没跑。
 
 > 各 local 镜像的 build script 都在 `package.json`,tag 已对齐 `qm.config.jsonc`
 > 的 `imageOverrides`。**改 config 里的 tag 后,记得同步 `package.json` 的
